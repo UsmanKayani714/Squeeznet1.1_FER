@@ -11,7 +11,7 @@ import argparse
 import utils
 import matplotlib.pyplot as plt
 from models import squeezemodel
-from models.efficientvit import EfficientViT
+from models.squeezemodel import SqueezeNetModel
 from FER2013 import FER2013
 from torch.autograd import Variable
 import timm
@@ -23,7 +23,7 @@ ssl._create_default_https_context = ssl._create_unverified_context
 
 parser = argparse.ArgumentParser(description='PyTorch FER2013 SqueezeNet 1.1 Training')
 parser.add_argument('--model', type=str, default='Ourmodel', help='CNN architecture')
-parser.add_argument('--dataset', type=str, default='efficientvitwcc', help='dataset')
+parser.add_argument('--dataset', type=str, default='fer2013_squeezenet', help='dataset')
 parser.add_argument('--fold', default=1, type=int, help='k fold number')
 parser.add_argument('--bs', default=64, type=int, help='batch_size')
 parser.add_argument('--lr', default=0.005, type=float, help='learning rate')
@@ -43,7 +43,7 @@ train_loss_values = []
 test_loss_values = []
 
 #cut_size = 60
-total_epoch = 30  # Reduced from 90 for FER2013 dataset (smaller and converges faster)
+total_epoch = 55  # As per paper
 
 path = os.path.join(opt.dataset + '_' + opt.model, str(opt.fold))
 
@@ -83,7 +83,7 @@ testloader = torch.utils.data.DataLoader(testset, batch_size=32, shuffle=False, 
 
 # Model
 if opt.model == 'Ourmodel':
-   num_classes = 6 
+   num_classes = 7 
    net  = squeezemodel.SqueezeNetModel(num_classes) 
 
 if opt.resume:
@@ -101,6 +101,7 @@ else:
 
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(net.parameters(), lr=opt.lr)
+scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
 
 ####
 def epoch_time(start_time, end_time):
@@ -218,6 +219,7 @@ for epoch in range(start_epoch, total_epoch):
     start_time = time.monotonic()
     train(epoch)
     test(epoch)
+    scheduler.step()
     end_time = time.monotonic()
     epoch_hours, epoch_mins, epoch_secs = epoch_time(start_time, end_time)
     print(f'Epoch: {epoch+1:02} | Epoch Time: {epoch_hours}h {epoch_mins}m {epoch_secs}s')

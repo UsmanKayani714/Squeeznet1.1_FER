@@ -10,10 +10,12 @@ from sklearn.metrics import classification_report
 import torchvision
 from models import squeezemodel
 from FER2013 import FER2013
+import itertools
 
 parser = argparse.ArgumentParser(description='PyTorch FER2013 SqueezeNet 1.1 Confusion Matrix')
-parser.add_argument('--dataset', type=str, default='fer2013_squeezenet', help='Dataset name')
+parser.add_argument('--dataset', type=str, default='SqueezeNetModel', help='Dataset name')
 parser.add_argument('--model', type=str, default='Ourmodel', help='Model name')
+parser.add_argument('--fold', default=1, type=int, help='k fold number')
 
 opt = parser.parse_args()
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -64,7 +66,7 @@ def plot_confusion_matrix(cm, classes,
     plt.xlabel('Predicted label', fontsize=18)
     plt.tight_layout()
 
-class_names = ['Angry', 'Disgust', 'Fear', 'Happy', 'Sadness', 'Surprise']
+class_names = ['Angry', 'Disgust', 'Fear', 'Happy', 'Neutral', 'Sadness', 'Surprise']
 
 # Model
 if opt.model == 'Ourmodel':
@@ -75,11 +77,18 @@ correct = 0
 total = 0
 all_target = []
 
-# Load the model checkpoint
-path = os.path.join(opt.dataset + '_' + opt.model)
-checkpoint = torch.load(os.path.join(path, 'Test_model.t7'))
+import torch.serialization
+torch.serialization.add_safe_globals([squeezemodel.SqueezeNetModel, torchvision.models.squeezenet.SqueezeNet])
 
-net.load_state_dict(checkpoint['net'])
+# Load the model checkpoint
+path = os.path.join(opt.dataset + '_' + opt.model, str(opt.fold))
+checkpoint = torch.load(os.path.join(path, 'Test_model.t7'), weights_only=False)
+
+if isinstance(checkpoint['net'], dict):
+    net.load_state_dict(checkpoint['net'])
+else:
+    net = checkpoint['net']  # Full model object
+
 net.to(device)
 net.eval()
 testset = FER2013(split='Testing', transform=transforms_vaild)
@@ -105,7 +114,7 @@ acc = 100. * correct / total
 print("FER2013 Test Accuracy: %0.3f%%" % acc)
 
 # Compute confusion matrix
-class_names = ['angry', 'disgust', 'fear', 'happy', 'sad', 'surprise']
+class_names = ['angry', 'disgust', 'fear', 'happy', 'neutral', 'sad', 'surprise']
 matrix = confusion_matrix(all_targets.data.cpu().numpy(), all_predicted.cpu().numpy())
 np.set_printoptions(precision=2)
 

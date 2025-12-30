@@ -184,8 +184,8 @@ print(np.shape(data_y_train))
 print(np.shape(data_x_test))
 print(np.shape(data_y_test))
 
-datapath_train = os.path.join('KMUtada','fer2013_train.h5')
-datapath_test = os.path.join('KMUtada','fer2013_test.h5')
+datapath_train = os.path.join('FERTdata','fer2013_train.h5')
+datapath_test = os.path.join('FERTdata','fer2013_test.h5')
 
 datafile_train = h5py.File(datapath_train, 'w')
 datafile_train.create_dataset("data_pixel", dtype = 'uint8', data=data_x_train)
