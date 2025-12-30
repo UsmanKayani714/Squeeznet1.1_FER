@@ -187,6 +187,10 @@ print(np.shape(data_y_test))
 datapath_train = os.path.join('FERTdata','fer2013_train.h5')
 datapath_test = os.path.join('FERTdata','fer2013_test.h5')
 
+# Create the FERTdata directory if it doesn't exist
+if not os.path.exists('FERTdata'):
+    os.makedirs('FERTdata')
+
 datafile_train = h5py.File(datapath_train, 'w')
 datafile_train.create_dataset("data_pixel", dtype = 'uint8', data=data_x_train)
 datafile_train.create_dataset("data_label", dtype = 'int64', data=data_y_train)

@@ -13,7 +13,7 @@ from FER2013 import FER2013
 import itertools
 
 parser = argparse.ArgumentParser(description='PyTorch FER2013 SqueezeNet 1.1 Confusion Matrix')
-parser.add_argument('--dataset', type=str, default='SqueezeNetModel', help='Dataset name')
+parser.add_argument('--dataset', type=str, default='fer2013_squeezenet', help='Dataset name')
 parser.add_argument('--model', type=str, default='Ourmodel', help='Model name')
 parser.add_argument('--fold', default=1, type=int, help='k fold number')
 
@@ -70,7 +70,7 @@ class_names = ['Angry', 'Disgust', 'Fear', 'Happy', 'Neutral', 'Sadness', 'Surpr
 
 # Model
 if opt.model == 'Ourmodel':
-   num_classes = 6
+   num_classes = 7  # FER2013 has 7 classes: angry, disgust, fear, happy, neutral, sad, surprise
    net = squeezemodel.SqueezeNetModel(num_classes)
 
 correct = 0

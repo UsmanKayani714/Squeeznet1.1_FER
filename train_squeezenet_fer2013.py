@@ -25,13 +25,13 @@ parser = argparse.ArgumentParser(description='PyTorch FER2013 SqueezeNet 1.1 Tra
 parser.add_argument('--model', type=str, default='Ourmodel', help='CNN architecture')
 parser.add_argument('--dataset', type=str, default='fer2013_squeezenet', help='dataset')
 parser.add_argument('--fold', default=1, type=int, help='k fold number')
-parser.add_argument('--bs', default=64, type=int, help='batch_size')
-parser.add_argument('--lr', default=0.005, type=float, help='learning rate')
+parser.add_argument('--bs', default=32, type=int, help='batch_size')
+parser.add_argument('--lr', default=0.001, type=float, help='learning rate (default: 0.001 for fine-tuning)')
 parser.add_argument('--resume', '-r', action='store_true', help='resume from checkpoint')
 opt = parser.parse_args()
 
-use_cuda = torch.cuda.is_available()
-device = "cuda:0" if torch.cuda.is_available() else "cpu"
+use_mps = torch.backends.mps.is_available()
+device = "mps" if use_mps else "cpu"
 
 best_Test_acc = 0  # best PrivateTest accuracy
 best_Test_acc_epoch = 0
@@ -43,19 +43,22 @@ train_loss_values = []
 test_loss_values = []
 
 #cut_size = 60
-total_epoch = 55  # As per paper
+total_epoch = 55  # Reduced for faster training
 
 path = os.path.join(opt.dataset + '_' + opt.model, str(opt.fold))
 
 # Data
 print('==> Preparing data..')
-print(use_cuda)
+print(use_mps)
+def repeat_channels(x):
+    return x.repeat(3, 1, 1)
+
 transforms_vaild = torchvision.transforms.Compose([
                                      torchvision.transforms.ToPILImage(),
                                      torchvision.transforms.Resize((224,)),
                                 
                                      torchvision.transforms.ToTensor(),
-                                     torchvision.transforms.Lambda(lambda x: x.repeat(3,1,1)),
+                                     torchvision.transforms.Lambda(repeat_channels),
                                      torchvision.transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225,))
                              
                                      ])
@@ -65,12 +68,8 @@ transforms_train = torchvision.transforms.Compose([
                                       torchvision.transforms.ToPILImage(),
                                       torchvision.transforms.Resize((224,)),            
                                       torchvision.transforms.RandomHorizontalFlip(),
-                                      torchvision.transforms.RandomRotation(40),
-                                      torchvision.transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
-                                      torchvision.transforms.RandomAffine(degrees=40, scale=(.3, 1.1), shear=0.15),
-                                      torchvision.transforms.GaussianBlur(kernel_size=5),
                                       torchvision.transforms.ToTensor(),
-                                      torchvision.transforms.Lambda(lambda x: x.repeat(3,1,1)),
+                                      torchvision.transforms.Lambda(repeat_channels),
                                       torchvision.transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225,))
                                      ])
 
@@ -86,13 +85,19 @@ if opt.model == 'Ourmodel':
    num_classes = 7 
    net  = squeezemodel.SqueezeNetModel(num_classes) 
 
+# Move model to device before loading checkpoint
+net = net.to(device)
+
 if opt.resume:
     # Load checkpoint.
     print('==> Resuming from checkpoint..')
     assert os.path.isdir(path), 'Error: no checkpoint directory found!'
-    checkpoint = torch.load(os.path.join(path,'Test_model.t7'))
+    checkpoint = torch.load(os.path.join(path,'Test_model.t7'), map_location=device)
     
-    net.load_state_dict(checkpoint['net'])
+    if isinstance(checkpoint['net'], dict):
+        net.load_state_dict(checkpoint['net'])
+    else:
+        net.load_state_dict(checkpoint['net'].state_dict())
     best_Test_acc = checkpoint['best_Test_acc']
     best_Test_acc_epoch = checkpoint['best_Test_acc_epoch']
     start_epoch = best_Test_acc_epoch + 1
@@ -100,8 +105,24 @@ else:
     print('==> Building model..')
 
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(net.parameters(), lr=opt.lr)
-scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.1)
+# Use Adam optimizer with weight decay for regularization
+# Learning rate is set lower for fine-tuning pre-trained model
+optimizer = optim.Adam(net.parameters(), lr=opt.lr, weight_decay=1e-4)
+# Learning rate scheduler: reduce by half every 15 epochs for more stable training
+scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=15, gamma=0.5)
+
+# Print training configuration
+print(f'==> Training Configuration:')
+print(f'    Model: SqueezeNet 1.1')
+print(f'    Dataset: FER2013')
+print(f'    Number of classes: {num_classes}')
+print(f'    Batch size: {opt.bs}')
+print(f'    Learning rate: {opt.lr}')
+print(f'    Total epochs: {total_epoch}')
+print(f'    Device: {device}')
+print(f'    Optimizer: Adam (weight_decay=1e-4)')
+print(f'    Scheduler: StepLR (step_size=15, gamma=0.5)')
+print('')
 
 ####
 def epoch_time(start_time, end_time):
@@ -121,26 +142,25 @@ def train(epoch):
     print('\nEpoch: %d' % epoch)
     global Train_acc
     global total_processing_time_train
-    net.to(device)
     net.train()
     train_loss = 0
     correct = 0
     total = 0
-    start_time = time.monotonic()
+    epoch_start_time = time.monotonic()
   
     for batch_idx, (inputs, targets) in enumerate(trainloader):
-        #if use_cuda:
         inputs, targets = inputs.to(device), targets.to(device)
         optimizer.zero_grad()
         inputs, targets = Variable(inputs), Variable(targets)
-        start_time = time.time() 
+        batch_start_time = time.time() 
         outputs = net(inputs)
-        end_time = time.time()  # Record the end time
-        processing_time = end_time - start_time
+        batch_end_time = time.time()  # Record the end time
+        processing_time = batch_end_time - batch_start_time
         total_processing_time_train += processing_time
         loss = criterion(outputs, targets)
         loss.backward()
-        #utils.clip_gradient(optimizer, 0.1)
+        # Gradient clipping for training stability
+        utils.clip_gradient(optimizer, 0.1)
         optimizer.step()
     
         train_loss += loss.item()
@@ -159,33 +179,31 @@ def test(epoch):
     global best_Test_acc
     global best_Test_acc_epoch
     global total_processing_time_test
-    net.to(device)
     net.eval()
     PrivateTest_loss = 0
     correct = 0
     total = 0
 
-    for batch_idx, (inputs, targets) in enumerate(testloader):
-      
-        #if use_cuda:
-        inputs, targets = inputs.to(device), targets.to(device)
-        inputs, targets = Variable(inputs), Variable(targets)
-        start_time = time.time()  # Record the start time
-   # Process the image with your model
-        outputs = net(inputs)
-        end_time = time.time()  # Record the end time
-        processing_time = end_time - start_time
-        
-        total_processing_time_test += processing_time   
+    with torch.no_grad():
+        for batch_idx, (inputs, targets) in enumerate(testloader):
+            inputs, targets = inputs.to(device), targets.to(device)
+            inputs, targets = Variable(inputs), Variable(targets)
+            batch_start_time = time.time()  # Record the start time
+            # Process the image with your model
+            outputs = net(inputs)
+            batch_end_time = time.time()  # Record the end time
+            processing_time = batch_end_time - batch_start_time
+            
+            total_processing_time_test += processing_time   
     
-        loss = criterion(outputs, targets)
-        PrivateTest_loss += loss.item()
-        _, predicted = torch.max(outputs.data, 1)
-        total += targets.size(0)
-        correct += predicted.eq(targets.data).cpu().sum().item()
-        
-        utils.progress_bar(batch_idx, len(testloader), 'TestLoss: %.3f | TestAcc: %.3f%% (%d/%d)'
-            % (PrivateTest_loss / (batch_idx + 1), 100. * correct / total, correct, total))
+            loss = criterion(outputs, targets)
+            PrivateTest_loss += loss.item()
+            _, predicted = torch.max(outputs.data, 1)
+            total += targets.size(0)
+            correct += predicted.eq(targets.data).cpu().sum().item()
+            
+            utils.progress_bar(batch_idx, len(testloader), 'TestLoss: %.3f | TestAcc: %.3f%% (%d/%d)'
+                % (PrivateTest_loss / (batch_idx + 1), 100. * correct / total, correct, total))
     # Save checkpoint.
     Test_acc = 100.*correct/total
     test_accuracy_values.append(Test_acc)
@@ -193,7 +211,8 @@ def test(epoch):
     if Test_acc > best_Test_acc:
         print('Saving..')
         print("best_Test_acc: %0.3f" % Test_acc)
-        state = {'net': net.state_dict() if use_cuda else net,
+        state = {
+            'net': net.state_dict(),
             'best_Test_acc': Test_acc,
             'best_Test_acc_epoch': epoch,
         }
@@ -207,7 +226,8 @@ def test(epoch):
         
     num_training_samples = len(trainloader.dataset)
     num_testing_samples = len(testloader.dataset)
-    print('Processing Time for test one image:', processing_time)
+    if len(testloader) > 0:
+        print('Processing Time for test one image:', processing_time)
     average_processing_time_train = total_processing_time_train / num_training_samples
     average_processing_time_test = total_processing_time_test / num_testing_samples
 
@@ -220,9 +240,10 @@ for epoch in range(start_epoch, total_epoch):
     train(epoch)
     test(epoch)
     scheduler.step()
+    current_lr = optimizer.param_groups[0]['lr']
     end_time = time.monotonic()
     epoch_hours, epoch_mins, epoch_secs = epoch_time(start_time, end_time)
-    print(f'Epoch: {epoch+1:02} | Epoch Time: {epoch_hours}h {epoch_mins}m {epoch_secs}s')
+    print(f'Epoch: {epoch+1:02} | Epoch Time: {epoch_hours}h {epoch_mins}m {epoch_secs}s | LR: {current_lr:.6f}')
 total_end_time = time.monotonic()
 
 total_hours, total_mins, total_secs = epoch_time(total_start_time, total_end_time)

@@ -21,4 +21,6 @@ class SqueezeNetModel(nn.Module):
         self.base_model.classifier[1] = final_conv
         
     def forward(self, x):
-        return self.base_model(x)
+        x = self.base_model(x)
+        # SqueezeNet outputs (batch, num_classes, 1, 1), reshape to (batch, num_classes)
+        return x.view(x.size(0), -1)
