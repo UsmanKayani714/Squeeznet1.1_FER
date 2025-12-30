@@ -70,7 +70,8 @@ def clip_gradient(optimizer, grad_clip):
     for group in optimizer.param_groups:
         #print(group['params'])
         for param in group['params']:
-            param.grad.data.clamp_(-grad_clip, grad_clip)
+            if param.grad is not None:
+                param.grad.data.clamp_(-grad_clip, grad_clip)
 
 def resize_image(image, width=None, height=None, inter=cv2.INTER_AREA):
     # check if the width and height is specified

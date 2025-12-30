@@ -1,0 +1,20 @@
+MODEL COMPARISON: Baseline vs PEFT-SqueezeNet
+================================================================================
+
+--- Recognition Performance ---
+Metric               Baseline             PEFT                 Difference          
+--------------------------------------------------------------------------------
+Accuracy (%)         62.427               50.919               -11.507             
+Precision (%)        62.639               51.046               -11.593             
+F1-score (%)         62.409               50.019               -12.389             
+
+--- Efficiency Metrics ---
+Metric                         Baseline                  PEFT                      Reduction                
+---------------------------------------------------------------------------------------------------------
+Total Parameters               726,087                   726,087                   N/A                      
+Trainable Parameters           726,087                   3,591                     99.51                    %
+Trainable %                    100.00                   % 0.49                     % 99.51                    %
+Avg Inference Time (ms)        0.111                     0.019                     82.75                    %
+
+Parameter Reduction: 99.51%
+PEFT uses 0.49% of baseline trainable parameters

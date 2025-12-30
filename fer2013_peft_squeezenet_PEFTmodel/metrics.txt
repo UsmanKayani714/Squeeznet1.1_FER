@@ -1,0 +1,10 @@
+PEFT-SqueezeNet 1.1 Evaluation Metrics
+=====================================
+
+Accuracy: 50.919%
+Precision (weighted): 51.046%
+F1-score (weighted): 50.019%
+
+Total parameters: 726,087
+Trainable parameters: 3,591
+Trainable percentage: 0.49%
